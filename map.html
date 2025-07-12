@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>美国州地图 - 点击/搜索高亮 (最终版)</title>
+  <style>
+    /* 页面基础样式 */
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      text-align: center;
+      background-color: #f0f2f5;
+      margin: 0;
+      padding: 20px;
+    }
+
+    h1 {
+      color: #333;
+    }
+
+    /* 控制区域样式 */
+    .controls {
+      margin: 20px;
+      padding: 15px;
+      background-color: #fff;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      display: inline-block;
+      position: relative;
+      z-index: 10;
+    }
+
+    #searchInput {
+      padding: 10px;
+      width: 250px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      font-size: 16px;
+    }
+
+    button {
+      padding: 10px 20px;
+      font-size: 16px;
+      cursor: pointer;
+      background-color: #007bff;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      margin-left: 10px;
+      transition: background-color 0.2s;
+    }
+
+    button:hover {
+      background-color: #0056b3;
+    }
+
+    /* SVG地图容器样式 */
+    #map-container {
+      position: relative;
+      display: flex;
+      justify-content: center;
+      width: 100%;
+      max-width: 1000px;
+      margin: 0 auto;
+      /* padding-top: 100px; */
+    }
+
+    svg {
+      background-color: #fff;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+    }
+    
+    /* 州路径的基础样式 */
+    .state {
+      fill: #e0e0e0;
+      stroke: #ffffff;
+      stroke-width: 1px;
+      transition: fill 0.3s ease;
+      cursor: pointer;
+    }
+
+    .state:hover {
+        fill: #cccccc;
+    }
+    
+    /* 州容器组样式 */
+    .state-container:hover .state {
+        fill: #cccccc;
+    }
+
+    /* 州标签文本样式 */
+    .state-label {
+      fill: #222;
+      font-size: 10px;
+      font-weight: 500;
+      text-anchor: middle;
+      alignment-baseline: middle;
+      pointer-events: none;
+      transition: font-size 0.3s ease;
+    }
+    
+    /* 高亮效果：发光、凸起 */
+    .highlight {
+      fill: #ffdd57;
+      stroke: #ff8c00;
+      stroke-width: 2.5px;
+      filter: drop-shadow(0 0 8px rgba(255, 140, 0, 0.8));
+    }
+    
+    #map-controls {
+      display: inline-block;
+      margin-left: 16px;
+      vertical-align: middle;
+    }
+
+    #map-controls button {
+      width: 40px;
+      height: 40px;
+      font-size: 20px;
+      margin-left: 4px;
+      border-radius: 50%;
+      border: none;
+      background: #007bff;
+      color: #fff;
+      cursor: pointer;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+      transition: background 0.2s;
+      text-align: center;
+      line-height: 32px;
+      padding: 0;
+    }
+    #map-controls button:hover {
+      background: #0056b3;
+    }
+    #map-controls button:disabled {
+      background: #cccccc;
+      cursor: not-allowed;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>美国地图交互演示 (最终版)</h1>
+
+  <div class="controls">
+    <input type="text" id="searchInput" placeholder="输入州的全称或简称 (如: California 或 CA)">
+    <button onclick="searchState()">搜索</button>
+    <button id="toggleButton" onclick="toggleLabels()">切换为全称</button>
+    <span id="map-controls">
+      <button id="zoom-in">+</button>
+      <button id="zoom-out" disabled>-</button>
+    </span>
+  </div>
+
+  <div id="map-container">
+    <svg id="us-map"></svg>
+  </div>
+
+  <!-- 引入D3.js库 -->
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <script src="https://d3js.org/topojson.v3.min.js"></script>
+
+  <script>
+    // --- 1. 初始化设置 ---
+    const width = 975;
+    const height = 610;
+
+    const svg = d3.select("#us-map")
+        .attr("viewBox", [0, 0, width, height]);
+
+    const projection = d3.geoAlbersUsa().scale(1300).translate([width / 2, height / 2]);
+    const path = d3.geoPath().projection(projection);
+
+    let isFullName = false;
+    const stateData = new Map();
+    let mapGroup;
+
+    const stateNameToAbbr = {
+        'Alabama': 'AL', 'Alaska': 'AK', 'Arizona': 'AZ', 'Arkansas': 'AR', 'California': 'CA',
+        'Colorado': 'CO', 'Connecticut': 'CT', 'Delaware': 'DE', 'Florida': 'FL', 'Georgia': 'GA',
+        'Hawaii': 'HI', 'Idaho': 'ID', 'Illinois': 'IL', 'Indiana': 'IN', 'Iowa': 'IA',
+        'Kansas': 'KS', 'Kentucky': 'KY', 'Louisiana': 'LA', 'Maine': 'ME', 'Maryland': 'MD',
+        'Massachusetts': 'MA', 'Michigan': 'MI', 'Minnesota': 'MN', 'Mississippi': 'MS', 'Missouri': 'MO',
+        'Montana': 'MT', 'Nebraska': 'NE', 'Nevada': 'NV', 'New Hampshire': 'NH', 'New Jersey': 'NJ',
+        'New Mexico': 'NM', 'New York': 'NY', 'North Carolina': 'NC', 'North Dakota': 'ND', 'Ohio': 'OH',
+        'Oklahoma': 'OK', 'Oregon': 'OR', 'Pennsylvania': 'PA', 'Rhode Island': 'RI', 'South Carolina': 'SC',
+        'South Dakota': 'SD', 'Tennessee': 'TN', 'Texas': 'TX', 'Utah': 'UT', 'Vermont': 'VT',
+        'Virginia': 'VA', 'Washington': 'WA', 'West Virginia': 'WV', 'Wisconsin': 'WI', 'Wyoming': 'WY',
+        'District of Columbia': 'DC'
+    };
+
+    // --- 2. 加载和绘制地图 ---
+    d3.json("https://cdn.jsdelivr.net/npm/us-atlas@3/states-10m.json").then(us => {
+      const states = topojson.feature(us, us.objects.states);
+
+      states.features.forEach(feature => {
+        const fullName = feature.properties.name;
+        const abbr = stateNameToAbbr[fullName];
+        if (abbr) {
+          feature.properties.abbr = abbr;
+          stateData.set(abbr.toLowerCase(), { id: feature.id, fullName: fullName, abbr: abbr });
+          stateData.set(fullName.toLowerCase(), { id: feature.id, fullName: fullName, abbr: abbr });
+        }
+      });
+      
+      mapGroup = svg.append("g");
+
+      const stateGroups = mapGroup.selectAll("g")
+        .data(states.features)
+        .join("g")
+        .attr("class", "state-container")
+        .attr("id", d => `container-${d.properties.abbr}`)
+        .attr("cursor", "pointer");
+
+      stateGroups.append("path")
+        .attr("class", "state")
+        .attr("d", path)
+        .attr("id", d => `state-${d.properties.abbr}`);
+
+      stateGroups.append("text")
+        .attr("class", "state-label")
+        .attr("transform", d => {
+          const c = path.centroid(d);
+          if (!isFinite(c[0]) || !isFinite(c[1])) {
+            return "translate(-100, -100)";
+          }
+          return `translate(${c})`;
+        })
+        .text(d => d.properties.abbr);
+
+      // --- 3. 新增交互功能：点击高亮 ---
+      stateGroups.on("click", function(event, d) {
+          const container = d3.select(this);
+          const pathElement = container.select('.state');
+          const wasHighlighted = pathElement.classed('highlight');
+
+          svg.selectAll('.state').classed('highlight', false);
+
+          if (!wasHighlighted) {
+              pathElement.classed('highlight', true);
+              container.raise();
+          }
+      });
+
+      d3.select("#container-DC").raise();
+    });
+
+    // --- 4. 核心功能函数 ---
+    function toggleLabels() {
+      isFullName = !isFullName;
+      const button = d3.select("#toggleButton");
+      const labels = svg.selectAll(".state-label");
+
+      if (isFullName) {
+        button.text("切换为简称");
+        labels.text(d => d.properties.name)
+              .style("font-size", d => (d.properties.name.length > 10 ? "7px" : "10px"));
+      } else {
+        button.text("切换为全称");
+        labels.text(d => d.properties.abbr)
+              .style("font-size", "10px");
+      }
+    }
+
+    function searchState() {
+      svg.selectAll(".state").classed("highlight", false);
+
+      const query = document.getElementById("searchInput").value.trim().toLowerCase();
+      if (!query) return;
+
+      const foundState = stateData.get(query);
+      
+      if (foundState) {
+        const statePath = d3.select(`#state-${foundState.abbr}`);
+        const stateContainer = d3.select(`#container-${foundState.abbr}`);
+
+        if (!statePath.empty() && !stateContainer.empty()) {
+            statePath.classed("highlight", true);
+            stateContainer.raise();
+        }
+      } else {
+        alert("未找到该州，请检查输入是否正确（例如 'California' 或 'CA'）。");
+      }
+    }
+
+    document.getElementById("searchInput").addEventListener("keydown", function(event) {
+      if (event.key === "Enter") {
+        searchState();
+      }
+    });
+
+    let currentScale = 1;
+    const minScale = 0.5;
+    const maxScale = 3;
+    const svgDom = document.getElementById("us-map");
+    const zoomOutButton = document.getElementById("zoom-out");
+
+    function updateSvgScale() {
+      svgDom.style.transform = `scale(${currentScale})`;
+      svgDom.style.transformOrigin = "center top";
+      // 启用/禁用缩放按钮
+      zoomOutButton.disabled = currentScale <= 1;
+    }
+
+    document.getElementById("zoom-in").onclick = function() {
+      if (currentScale < maxScale) {
+        currentScale += 0.2;
+        updateSvgScale();
+      }
+    };
+    document.getElementById("zoom-out").onclick = function() {
+      if (currentScale > minScale) {
+        currentScale -= 0.2;
+        updateSvgScale();
+      }
+    };
+
+    // 初始加载时设置按钮状态
+    updateSvgScale();
+  </script>
+
+</body>
+</html>
