@@ -11,6 +11,7 @@
       background-color: #f0f2f5;
       margin: 0;
       padding: 20px;
+      position: relative;
     }
 
     h1 {
@@ -29,12 +30,43 @@
       z-index: 10;
     }
 
+    .input-wrapper {
+      position: relative;
+      display: inline-block;
+      vertical-align: middle;
+    }
+
     #searchInput {
-      padding: 10px;
-      width: 250px;
+      padding: 10px 30px 10px 10px; /* 增加右侧 padding 容纳清除按钮 */
+      width: 342px;
       border: 1px solid #ccc;
       border-radius: 4px;
       font-size: 16px;
+      box-sizing: border-box; /* 确保 padding 不影响宽度 */
+    }
+
+    .clear-button {
+      position: absolute;
+      right: 8px; /* 紧贴输入框内右侧 */
+      top: 50%;
+      transform: translateY(-50%);
+      background: none;
+      border: none;
+      font-size: 20px;
+      color: #666;
+      cursor: pointer;
+      padding: 0;
+      margin: 0;
+      line-height: 1;
+      opacity: 0.7;
+      width: 20px;
+      height: 20px;
+      text-align: center;
+    }
+
+    .clear-button:hover {
+      color: #000;
+      opacity: 1;
     }
 
     button {
@@ -47,6 +79,7 @@
       border-radius: 4px;
       margin-left: 10px;
       transition: background-color 0.2s;
+      vertical-align: middle;
     }
 
     button:hover {
@@ -61,7 +94,6 @@
       width: 100%;
       max-width: 1000px;
       margin: 0 auto;
-      /* padding-top: 100px; */
     }
 
     svg {
@@ -136,14 +168,41 @@
       background: #cccccc;
       cursor: not-allowed;
     }
+
+    /* 加载动画样式 */
+    #loading {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      display: none;
+      z-index: 20;
+    }
+
+    .loader {
+      border: 8px solid #f3f3f3;
+      border-top: 8px solid #007bff;
+      border-radius: 50%;
+      width: 60px;
+      height: 60px;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
   </style>
 </head>
 <body>
 
-  <h1>美国地图交互演示 (最终版)</h1>
+  <h1>美国地图交互演示</h1>
 
   <div class="controls">
-    <input type="text" id="searchInput" placeholder="输入州的全称或简称 (如: California 或 CA)">
+    <div class="input-wrapper">
+      <input type="text" id="searchInput" placeholder="输入州的全称或简称 (如: California 或 CA)">
+      <button class="clear-button" onclick="clearInput()">×</button>
+    </div>
     <button onclick="searchState()">搜索</button>
     <button id="toggleButton" onclick="toggleLabels()">切换为全称</button>
     <span id="map-controls">
@@ -154,6 +213,9 @@
 
   <div id="map-container">
     <svg id="us-map"></svg>
+    <div id="loading">
+      <div class="loader"></div>
+    </div>
   </div>
 
   <!-- 引入D3.js库 -->
@@ -190,7 +252,10 @@
     };
 
     // --- 2. 加载和绘制地图 ---
-    d3.json("https://cdn.jsdelivr.net/npm/us-atlas@3/states-10m.json").then(us => {
+    const loading = document.getElementById("loading");
+    loading.style.display = "block";
+    d3.json("./data/states-10m.json").then(us => {
+      loading.style.display = "none";
       const states = topojson.feature(us, us.objects.states);
 
       states.features.forEach(feature => {
@@ -243,6 +308,10 @@
       });
 
       d3.select("#container-DC").raise();
+    }).catch(error => {
+      loading.style.display = "none";
+      console.error("Error loading map data:", error);
+      alert("地图数据加载失败，请检查文件路径或联系管理员。");
     });
 
     // --- 4. 核心功能函数 ---
@@ -283,6 +352,10 @@
       }
     }
 
+    function clearInput() {
+      document.getElementById("searchInput").value = "";
+    }
+
     document.getElementById("searchInput").addEventListener("keydown", function(event) {
       if (event.key === "Enter") {
         searchState();
@@ -298,7 +371,6 @@
     function updateSvgScale() {
       svgDom.style.transform = `scale(${currentScale})`;
       svgDom.style.transformOrigin = "center top";
-      // 启用/禁用缩放按钮
       zoomOutButton.disabled = currentScale <= 1;
     }
 
